@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://raw.githubusercontent.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; upgrade-insecure-requests;"
+    />
+    <meta
+      name="description"
+      content="2026 世界杯赛程、推荐、结果和冠军竞猜展示站"
+    />
+    <title>2026 世界杯赛程与推荐</title>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <header class="site-header" aria-label="站点导航">
+      <a class="brand" href="#home" aria-label="回到首页">
+        <span class="brand-mark">🏆</span>
+        <span class="brand-text">2026<br />World Cup</span>
+      </a>
+      <nav class="top-nav" aria-label="主导航">
+        <a href="#home">首页</a>
+        <a href="#schedule">赛程</a>
+        <a href="#tips">推荐</a>
+        <a href="#results">结果</a>
+        <a href="#data">数据</a>
+      </nav>
+    </header>
+
+    <main id="home" class="dashboard-shell">
+      <section class="hero-banner" aria-labelledby="heroTitle">
+        <h1 id="heroTitle" class="hero-title">2026世界杯赛程与推荐下注</h1>
+      </section>
+
+      <section class="scoreboard" aria-label="赛事统计总览">
+        <article class="metric-card">
+          <span class="metric-icon">⚽</span>
+          <div>
+            <span>全部比赛</span>
+            <strong id="totalMatches">104</strong>
+            <small>场</small>
+          </div>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon purple">✓</span>
+          <div>
+            <span>已完成比赛</span>
+            <strong id="completedMatches">0</strong>
+            <small>场</small>
+          </div>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon target">◎</span>
+          <div>
+            <span>当前胜率</span>
+            <strong id="hitRate">--</strong>
+            <small id="hitRateDetail">等待数据</small>
+          </div>
+        </article>
+        <article class="metric-card">
+          <span class="metric-icon coin">▰</span>
+          <div>
+            <span>当前模式</span>
+            <strong id="dataMode">Loading</strong>
+            <small>优先接口，失败回退本地数据</small>
+          </div>
+        </article>
+      </section>
+
+      <section class="main-grid" aria-label="世界杯数据面板">
+        <section id="schedule" class="panel group-panel" aria-labelledby="scheduleTitle">
+          <div class="panel-head">
+            <div>
+              <p class="kicker">🏟 小组赛赛程</p>
+              <h2 id="scheduleTitle">小组赛赛程（A组 - L组）</h2>
+            </div>
+            <span class="panel-badge">12 组 · 72 场</span>
+          </div>
+          <div id="groupSchedule" class="group-grid" aria-live="polite"></div>
+        </section>
+
+        <section class="panel bracket-panel" aria-labelledby="bracketTitle">
+          <div class="panel-head">
+            <div>
+              <p class="kicker">淘汰赛对阵</p>
+              <h2 id="bracketTitle">淘汰赛对阵</h2>
+            </div>
+            <span class="panel-badge">32强 → 决赛</span>
+          </div>
+          <div id="bracketBoard" class="bracket-board" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section class="mid-grid" aria-label="推荐与冠亚军">
+        <section id="tips" class="panel recommend-section" aria-labelledby="tipsTitle">
+          <div class="section-head">
+            <div>
+              <p class="kicker">⭐ 推荐下注（只读）</p>
+              <h2 id="tipsTitle">推荐下注（只读）</h2>
+            </div>
+          </div>
+          <div id="tipCards" class="tip-grid"></div>
+        </section>
+
+        <section class="panel champion-panel" aria-labelledby="championTitle">
+          <div class="panel-head">
+            <div>
+              <p class="kicker">♛ 冠亚军下注（只读）</p>
+              <h2 id="championTitle">冠亚军竞猜（只读）</h2>
+            </div>
+            <span class="crown">♛</span>
+          </div>
+          <div id="championPicks" class="champion-list"></div>
+        </section>
+      </section>
+
+      <section class="bottom-grid" aria-label="结果与累计统计">
+        <section id="results" class="panel results-panel" aria-labelledby="resultsTitle">
+          <div class="panel-head">
+            <div>
+              <p class="kicker">📊 已结束比赛与推荐结果</p>
+              <h2 id="resultsTitle">已结束比赛与推荐结果（只读）</h2>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>阶段</th>
+                  <th>比赛</th>
+                  <th>常规时间比分</th>
+                  <th>比赛结果</th>
+                </tr>
+              </thead>
+              <tbody id="resultRows" aria-live="polite"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="data" class="stats-strip" aria-label="累计数据统计">
+          <article>
+            <span class="metric-icon small">🏆</span>
+            <div>
+              <span>已结算推荐场次</span>
+              <strong id="settledTips">0</strong>
+              <small>场</small>
+            </div>
+          </article>
+          <article>
+            <span class="metric-icon small purple">◎</span>
+            <div>
+              <span>命中推荐场次</span>
+              <strong id="hitTips">0</strong>
+              <small>场</small>
+            </div>
+          </article>
+          <article>
+            <span class="metric-icon small coin">▰</span>
+            <div>
+              <span>总投注单位</span>
+              <strong id="totalUnits">0</strong>
+            </div>
+          </article>
+          <article>
+            <span class="metric-icon small trend">↗</span>
+            <div>
+              <span>净收益单位</span>
+              <strong id="netUnits">0</strong>
+            </div>
+          </article>
+          <article>
+            <span class="metric-icon small roi">ROI</span>
+            <div>
+              <span>ROI</span>
+              <strong id="roi">--</strong>
+            </div>
+          </article>
+        </section>
+      </section>
+
+    </main>
+
+    <footer class="site-footer">本网站为只读静态展示站点 · 2026 世界杯赛程与推荐</footer>
+
+    <script src="js/data.js"></script>
+    <script src="js/main.js"></script>
+  </body>
+</html>
