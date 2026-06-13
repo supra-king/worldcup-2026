@@ -748,6 +748,27 @@ h3 {
   color: var(--muted);
 }
 
+.tip-leg-list {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+
+.tip-leg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+}
+
+.tip-leg em {
+  margin-left: auto;
+  color: var(--gold);
+  font-style: normal;
+  font-weight: 1000;
+}
+
 dl {
   display: grid;
   gap: 4px;
@@ -873,7 +894,7 @@ dd {
 
 table {
   width: 100%;
-  min-width: 620px;
+  min-width: 860px;
   border-collapse: collapse;
 }
 
@@ -917,6 +938,25 @@ td {
 .result-pill.settled {
   color: var(--green);
   background: rgba(57, 242, 139, 0.11);
+}
+
+.profit {
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.profit.hit {
+  color: var(--green);
+}
+
+.profit.miss {
+  color: var(--red);
+}
+
+.result-separator {
+  display: inline-block;
+  margin: 0 6px;
+  color: var(--muted);
 }
 
 .stats-strip {

@@ -131,8 +131,11 @@
                   <th>日期</th>
                   <th>阶段</th>
                   <th>比赛</th>
+                  <th>推荐选择</th>
+                  <th>赔率</th>
                   <th>常规时间比分</th>
-                  <th>比赛结果</th>
+                  <th>推荐结果</th>
+                  <th>盈亏</th>
                 </tr>
               </thead>
               <tbody id="resultRows" aria-live="polite"></tbody>
@@ -160,14 +163,15 @@
           <article>
             <span class="metric-icon small coin">▰</span>
             <div>
-              <span>总投注单位</span>
+              <span>总投注金额</span>
               <strong id="totalUnits">0</strong>
+              <small id="totalUnitsDetail"></small>
             </div>
           </article>
           <article>
             <span class="metric-icon small trend">↗</span>
             <div>
-              <span>净收益单位</span>
+              <span>当前盈亏金额</span>
               <strong id="netUnits">0</strong>
             </div>
           </article>

@@ -68,6 +68,11 @@
     const matches = state.schedule.matches;
     const matchRecommendationBets = config.matchRecommendationBets || [];
     const championBets = config.championBets || [];
+    const settledRecommendations = getSettledMatchRecommendationSettlements(matches);
+    const hitRecommendations = settledRecommendations.filter(
+      (settlement) => settlement.status === "hit",
+    );
+    const stakePerUnit = Number(config.stakePerUnit || 2);
     const completedMatches = matches.filter(
       (match) => getMatchStatus(match).key === "completed",
     ).length;
@@ -75,17 +80,40 @@
       (sum, bet) => sum + Number(bet.units || 0),
       0,
     );
+    const totalStakeAmount = totalUnits * stakePerUnit;
+    const settledStakeAmount = settledRecommendations.reduce(
+      (sum, settlement) => sum + settlement.stakeAmount,
+      0,
+    );
+    const netAmount = settledRecommendations.reduce(
+      (sum, settlement) => sum + settlement.profitAmount,
+      0,
+    );
 
     text("#totalMatches", matches.length);
     text("#completedMatches", completedMatches);
     text("#dataMode", state.source);
-    text("#hitRate", "--");
-    text("#hitRateDetail", "等待赛果");
-    text("#settledTips", getSettledMatchRecommendationCount(matches));
-    text("#hitTips", 0);
-    text("#totalUnits", totalUnits);
-    text("#netUnits", "--");
-    text("#roi", "--");
+    text(
+      "#hitRate",
+      settledRecommendations.length
+        ? `${Math.round((hitRecommendations.length / settledRecommendations.length) * 100)}%`
+        : "--",
+    );
+    text(
+      "#hitRateDetail",
+      settledRecommendations.length
+        ? `${hitRecommendations.length} / ${settledRecommendations.length}`
+        : "等待赛果",
+    );
+    text("#settledTips", settledRecommendations.length);
+    text("#hitTips", hitRecommendations.length);
+    text("#totalUnits", formatCurrency(totalStakeAmount));
+    text("#totalUnitsDetail", `${totalUnits} 注`);
+    text("#netUnits", formatSignedCurrency(netAmount));
+    text(
+      "#roi",
+      settledStakeAmount ? `${((netAmount / settledStakeAmount) * 100).toFixed(1)}%` : "--",
+    );
 
     renderGroupSchedule(matches);
     renderBracket(matches);
@@ -173,13 +201,10 @@
       .map(
         (bet) => {
           const match = findMatchForBet(matches, bet);
+          const settlement = settleMatchRecommendation(bet, matches);
           return `
-          <article class="tip-card pending">
-            <div class="tip-teams">
-              ${team(bet.team1 || match?.team1 || "TBD")}
-              <span> vs </span>
-              ${team(bet.team2 || match?.team2 || "TBD")}
-            </div>
+          <article class="tip-card ${settlement.className}">
+            <div class="tip-teams">${renderBetTeams(bet)}</div>
             <dl>
               <div>
                 <dt>类型</dt>
@@ -190,15 +215,19 @@
                 <dd>${escapeHtml(bet.selection || "-")}</dd>
               </div>
               <div>
+                <dt>赔率</dt>
+                <dd>${escapeHtml(formatOdds(getBetOdds(bet)))}</dd>
+              </div>
+              <div>
                 <dt>阶段</dt>
-                <dd>${escapeHtml(match?.group ? `${match.group.replace("Group ", "")} 组` : roundName(match?.round || bet.round || "-"))}</dd>
+                <dd>${escapeHtml(getBetStageLabel(bet, match, matches))}</dd>
               </div>
               <div>
                 <dt>注数</dt>
                 <dd>${escapeHtml(bet.units)} 注</dd>
               </div>
             </dl>
-            <div class="tip-result">待赛果</div>
+            <div class="tip-result">${escapeHtml(settlement.resultLabel)}</div>
           </article>
         `;
         },
@@ -207,23 +236,22 @@
   }
 
   function renderResults(matches) {
-    const completed = matches
-      .filter(
-        (match) =>
-          getMatchStatus(match).key === "completed" &&
-          getRegularTimeScore(match),
-      )
-      .sort((a, b) => (getMatchStartTime(b) || 0) - (getMatchStartTime(a) || 0));
+    const completed = getSettledMatchRecommendationSettlements(matches).sort(
+      (a, b) => b.sortTime - a.sortTime,
+    );
 
     query("#resultRows").innerHTML = completed
       .map(
-        (match) => `
+        (settlement) => `
           <tr>
-            <td>${formatDate(match.date)}</td>
-            <td>${escapeHtml(match.group ? `${match.group.replace("Group ", "")} 组` : roundName(match.round))}</td>
-            <td>${team(match.team1)} <b>vs</b> ${team(match.team2)}</td>
-            <td><span class="match-score">${escapeHtml(getRegularTimeScoreText(match))}</span></td>
-            <td><span class="result-pill settled">${escapeHtml(getRegularTimeResult(match))}</span></td>
+            <td>${escapeHtml(settlement.dateLabel)}</td>
+            <td>${escapeHtml(settlement.stageLabel)}</td>
+            <td>${settlement.matchLabel}</td>
+            <td>${escapeHtml(settlement.selectionLabel)}</td>
+            <td>${escapeHtml(settlement.oddsLabel)}</td>
+            <td><span class="match-score">${escapeHtml(settlement.scoreLabel)}</span></td>
+            <td><span class="result-pill ${settlement.className}">${escapeHtml(settlement.label)}</span></td>
+            <td><span class="profit ${settlement.className}">${escapeHtml(settlement.profitLabel)}</span></td>
           </tr>
         `,
       )
@@ -246,8 +274,8 @@
                 bet.runnerUp,
                 bet.runnerUpLabel,
               )}</span>
-              <b>${escapeHtml(bet.units)}</b>
-              <em>注</em>
+              <b>${escapeHtml(formatOdds(bet.odds))}</b>
+              <em>${escapeHtml(bet.units)}注</em>
             </div>
           </article>
         `,
@@ -274,12 +302,187 @@
     return `<span class="team"><span class="flag-fallback" aria-hidden="true">◎</span>${escapeHtml(displayName)}</span>`;
   }
 
-  function getSettledMatchRecommendationCount(matches) {
+  function renderBetTeams(bet) {
+    if (Array.isArray(bet.legs) && bet.legs.length > 0) {
+      return `
+        <div class="tip-leg-list">
+          ${bet.legs
+            .map(
+              (leg) => `
+                <div class="tip-leg">
+                  ${betTeam(leg.team1, leg.team1Label)}
+                  <span>vs</span>
+                  ${betTeam(leg.team2, leg.team2Label)}
+                  <em>${escapeHtml(
+                    `${leg.selection || ""}${leg.odds ? ` @${formatOdds(leg.odds)}` : ""}`,
+                  )}</em>
+                </div>
+              `,
+            )
+            .join("")}
+        </div>
+      `;
+    }
+    return `
+      ${betTeam(bet.team1, bet.team1Label)}
+      <span>vs</span>
+      ${betTeam(bet.team2, bet.team2Label)}
+    `;
+  }
+
+  function getBetStageLabel(bet, match, matches) {
+    if (Array.isArray(bet.legs) && bet.legs.length > 0) {
+      const legMatches = bet.legs.map((leg) => findMatchForBet(matches, leg));
+      if (legMatches.every((legMatch) => legMatch?.group)) return "小组赛";
+      return bet.market || "串关";
+    }
+    if (match?.group) return `${match.group.replace("Group ", "")} 组`;
+    return roundName(match?.round || bet.round || "-");
+  }
+
+  function getBetStatusLabel(bet, matches) {
+    return settleMatchRecommendation(bet, matches).label;
+  }
+
+  function getSettledMatchRecommendationSettlements(matches) {
     const bets = config.matchRecommendationBets || [];
-    return bets.filter((bet) => {
-      const match = findMatchForBet(matches, bet);
-      return match && getMatchStatus(match).key === "completed";
-    }).length;
+    return bets
+      .map((bet) => settleMatchRecommendation(bet, matches))
+      .filter(
+        (settlement) =>
+          settlement.status === "hit" || settlement.status === "miss",
+      );
+  }
+
+  function settleMatchRecommendation(bet, matches) {
+    const legMatches = getBetLegMatches(bet, matches);
+    const allFound = legMatches.every(({ match }) => match);
+    if (!allFound) {
+      return buildBetSettlement(bet, legMatches, "pending", "待赛果", "pending");
+    }
+
+    const statuses = legMatches.map(({ match }) => getMatchStatus(match));
+    if (statuses.some((status) => status.key === "live")) {
+      return buildBetSettlement(bet, legMatches, "live", "正在比赛", "pending");
+    }
+    if (!statuses.every((status) => status.key === "completed")) {
+      return buildBetSettlement(bet, legMatches, "pending", "待赛果", "pending");
+    }
+
+    const hit = legMatches.every(({ leg, match }) => isRecommendationLegHit(leg, match));
+    return buildBetSettlement(
+      bet,
+      legMatches,
+      hit ? "hit" : "miss",
+      hit ? "命中" : "未命中",
+      hit ? "hit" : "miss",
+    );
+  }
+
+  function buildBetSettlement(bet, legMatches, status, label, className) {
+    const matches = legMatches.map(({ match }) => match).filter(Boolean);
+    const firstMatch = matches[0];
+    const odds = getBetOdds(bet);
+    const stakeAmount = Number(bet.units || 0) * Number(config.stakePerUnit || 2);
+    const payoutAmount = status === "hit" ? stakeAmount * odds : 0;
+    const profitAmount =
+      status === "hit" ? payoutAmount - stakeAmount : status === "miss" ? -stakeAmount : 0;
+    const resultLabel =
+      status === "hit" || status === "miss"
+        ? `${label} ${formatSignedCurrency(profitAmount)}`
+        : label;
+    const stageLabel =
+      legMatches.length > 1
+        ? bet.market || "串关"
+        : getBetStageLabel(bet, firstMatch, matches);
+    const matchLabel = legMatches
+      .map(({ leg, match }) => {
+        const team1Name = leg.team1 || match?.team1 || "TBD";
+        const team2Name = leg.team2 || match?.team2 || "TBD";
+        return `${betTeam(team1Name, leg.team1Label)} <b>vs</b> ${betTeam(
+          team2Name,
+          leg.team2Label,
+        )}`;
+      })
+      .join('<span class="result-separator"> / </span>');
+    return {
+      bet,
+      status,
+      label,
+      resultLabel,
+      className,
+      stageLabel,
+      matchLabel,
+      selectionLabel: bet.selection || "-",
+      odds,
+      oddsLabel: formatOdds(odds),
+      stakeAmount,
+      payoutAmount,
+      profitAmount,
+      profitLabel: status === "hit" || status === "miss" ? formatSignedCurrency(profitAmount) : "-",
+      scoreLabel:
+        legMatches
+          .map(({ match }) => (match ? getRegularTimeScoreText(match) : ""))
+          .filter(Boolean)
+          .join(" / ") || "-",
+      dateLabel:
+        legMatches
+          .map(({ leg, match }) => leg.date || match?.date)
+          .filter(Boolean)
+          .map(formatDate)
+          .join(" / ") || "-",
+      sortTime: matches.length
+        ? Math.max(...matches.map((match) => getMatchStartTime(match) || 0), 0)
+        : 0,
+    };
+  }
+
+  function getBetOdds(bet) {
+    if (Number(bet.odds) > 0) return Number(bet.odds);
+    if (Array.isArray(bet.legs) && bet.legs.length > 0) {
+      return bet.legs.reduce((product, leg) => product * Number(leg.odds || 1), 1);
+    }
+    return 1;
+  }
+
+  function getBetMatches(bet, matches) {
+    return getBetLegMatches(bet, matches)
+      .map(({ match }) => match)
+      .filter(Boolean);
+  }
+
+  function getBetLegMatches(bet, matches) {
+    const legs = Array.isArray(bet.legs) && bet.legs.length > 0 ? bet.legs : [bet];
+    return legs.map((leg) => ({ leg, match: findMatchForBet(matches, leg) }));
+  }
+
+  function isRecommendationLegHit(leg, match) {
+    const score = getRegularTimeScore(match);
+    const selection = String(leg.selection || "").trim();
+    if (!score || !selection) return false;
+
+    const scorePick = selection.match(/^(\d+)\s*[:：-]\s*(\d+)$/);
+    if (scorePick) {
+      return Number(scorePick[1]) === score[0] && Number(scorePick[2]) === score[1];
+    }
+
+    if (selection === "平") return score[0] === score[1];
+
+    if (selection === "平胜") {
+      const halfScore = getHalfTimeScore(match);
+      return (
+        Boolean(halfScore) &&
+        getOutcomeCode(halfScore) === "平" &&
+        getOutcomeCode(score) === "胜"
+      );
+    }
+
+    if (selection.endsWith("胜")) {
+      if (selection.includes(leg.team1Label || leg.team1)) return score[0] > score[1];
+      if (selection.includes(leg.team2Label || leg.team2)) return score[1] > score[0];
+    }
+
+    return false;
   }
 
   function findMatchForBet(matches, bet) {
@@ -385,6 +588,28 @@
     return score ? `${score[0]} - ${score[1]}` : "";
   }
 
+  function getHalfTimeScore(match) {
+    const candidate = match.score?.ht;
+    if (
+      Array.isArray(candidate) &&
+      candidate.length >= 2 &&
+      candidate[0] !== null &&
+      candidate[0] !== undefined &&
+      candidate[1] !== null &&
+      candidate[1] !== undefined
+    ) {
+      return [Number(candidate[0]), Number(candidate[1])];
+    }
+    return null;
+  }
+
+  function getOutcomeCode(score) {
+    if (!score) return "";
+    if (score[0] > score[1]) return "胜";
+    if (score[0] < score[1]) return "负";
+    return "平";
+  }
+
   function getRegularTimeResult(match) {
     const score = getRegularTimeScore(match);
     if (!score || score[0] === score[1]) return "平局";
@@ -405,6 +630,31 @@
     return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
       date.getDate(),
     ).padStart(2, "0")}`;
+  }
+
+  function formatOdds(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "-";
+    return Number.isInteger(number) ? String(number) : number.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  }
+
+  function formatCurrency(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "¥0";
+    return `¥${formatAmount(number)}`;
+  }
+
+  function formatSignedCurrency(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number) || number === 0) return "¥0";
+    return `${number > 0 ? "+" : "-"}¥${formatAmount(Math.abs(number))}`;
+  }
+
+  function formatAmount(value) {
+    return Number(value.toFixed(2)).toLocaleString("zh-CN", {
+      minimumFractionDigits: Number.isInteger(Number(value.toFixed(2))) ? 0 : 2,
+      maximumFractionDigits: 2,
+    });
   }
 
   function text(selector, value) {
