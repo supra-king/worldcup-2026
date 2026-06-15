@@ -196,43 +196,87 @@
   }
 
   function renderTips(matches) {
-    const bets = config.matchRecommendationBets || [];
-    query("#tipCards").innerHTML = bets
-      .map(
-        (bet) => {
-          const match = findMatchForBet(matches, bet);
-          const settlement = settleMatchRecommendation(bet, matches);
-          return `
-          <article class="tip-card ${settlement.className}">
-            <div class="tip-teams">${renderBetTeams(bet)}</div>
-            <dl>
-              <div>
-                <dt>类型</dt>
-                <dd>${escapeHtml(bet.market || "场次推荐")}</dd>
-              </div>
-              <div>
-                <dt>选择</dt>
-                <dd>${escapeHtml(bet.selection || "-")}</dd>
-              </div>
-              <div>
-                <dt>赔率</dt>
-                <dd>${escapeHtml(formatOdds(getBetOdds(bet)))}</dd>
-              </div>
-              <div>
-                <dt>阶段</dt>
-                <dd>${escapeHtml(getBetStageLabel(bet, match, matches))}</dd>
-              </div>
-              <div>
-                <dt>注数</dt>
-                <dd>${escapeHtml(bet.units)} 注</dd>
-              </div>
-            </dl>
-            <div class="tip-result">${escapeHtml(settlement.resultLabel)}</div>
-          </article>
-        `;
-        },
-      )
-      .join("");
+    const bets = [...(config.matchRecommendationBets || [])].sort((a, b) =>
+      compareBetsByDisplayPriority(a, b, matches),
+    );
+    let parlayGroupNumber = 0;
+    const displayItems = bets.flatMap((bet, betIndex) => {
+      const isParlay = Array.isArray(bet.legs) && bet.legs.length > 0;
+      if (isParlay) parlayGroupNumber += 1;
+      return getTipDisplayItems(bet, betIndex, matches, isParlay ? parlayGroupNumber : null);
+    });
+    const container = query("#tipCards");
+    container.innerHTML = displayItems.map((item) => renderTipCard(item, matches)).join("");
+    container.scrollTop = 0;
+  }
+
+  function getTipDisplayItems(bet, betIndex, matches, parlayGroupNumber) {
+    const legs = Array.isArray(bet.legs) && bet.legs.length > 0 ? bet.legs : [bet];
+    return legs.map((leg, legIndex) => ({
+      bet,
+      leg,
+      betIndex,
+      parlayGroupNumber,
+      legIndex,
+      legCount: legs.length,
+      match: findMatchForBet(matches, leg),
+      isParlay: legs.length > 1,
+    }));
+  }
+
+  function renderTipCard(item, matches) {
+    const { bet, leg, match, isParlay, legIndex, legCount, parlayGroupNumber } = item;
+    const settlement = settleMatchRecommendation(bet, matches);
+    const toneClass = isParlay ? `parlay-tone-${(parlayGroupNumber - 1) % 6}` : "";
+    const positionClass = isParlay
+      ? legIndex === 0
+        ? "parlay-start"
+        : legIndex === legCount - 1
+          ? "parlay-end"
+          : "parlay-middle"
+      : "";
+    const oddsLabel = isParlay
+      ? `${formatOdds(leg.odds)} / 串${formatOdds(getBetOdds(bet))}`
+      : formatOdds(leg.odds || getBetOdds(bet));
+
+    return `
+      <article class="tip-card ${settlement.className} ${
+        isParlay ? "parlay-card" : "single-card"
+      } ${toneClass} ${positionClass}">
+        <div class="tip-card-head">
+          <span class="tip-mode ${isParlay ? "parlay" : "single"}">${
+            isParlay ? `串关 ${String(parlayGroupNumber).padStart(2, "0")}` : "单关"
+          }</span>
+          <span class="tip-count">${isParlay ? `${legIndex + 1}/${legCount}` : "1/1"}</span>
+        </div>
+        <div class="tip-teams">${renderBetTeams(leg)}</div>
+        <dl>
+          <div>
+            <dt>类型</dt>
+            <dd>${escapeHtml(leg.market || bet.market || "场次推荐")}</dd>
+          </div>
+          <div>
+            <dt>选择</dt>
+            <dd>${escapeHtml(leg.selection || "-")}</dd>
+          </div>
+          <div>
+            <dt>赔率</dt>
+            <dd>${escapeHtml(oddsLabel)}</dd>
+          </div>
+          <div>
+            <dt>阶段</dt>
+            <dd>${escapeHtml(getBetStageLabel(leg, match, matches))}</dd>
+          </div>
+          <div>
+            <dt>${isParlay ? "组注数" : "注数"}</dt>
+            <dd>${escapeHtml(bet.units)} 注</dd>
+          </div>
+        </dl>
+        <div class="tip-result">${escapeHtml(
+          isParlay ? `串关 · ${settlement.resultLabel}` : settlement.resultLabel,
+        )}</div>
+      </article>
+    `;
   }
 
   function renderResults(matches) {
@@ -369,7 +413,15 @@
       return buildBetSettlement(bet, legMatches, "pending", "待赛果", "pending");
     }
 
-    const hit = legMatches.every(({ leg, match }) => isRecommendationLegHit(leg, match));
+    const resolutions = legMatches.map(({ leg, match }) =>
+      getRecommendationLegResolution(leg, match),
+    );
+    const unresolved = resolutions.find((resolution) => resolution.status === "unresolved");
+    if (unresolved) {
+      return buildBetSettlement(bet, legMatches, "pending", unresolved.label, "pending");
+    }
+
+    const hit = resolutions.every((resolution) => resolution.status === "hit");
     return buildBetSettlement(
       bet,
       legMatches,
@@ -451,38 +503,159 @@
       .filter(Boolean);
   }
 
+  function compareBetsByDisplayPriority(a, b, matches) {
+    const priorityA = getBetDisplayPriority(a, matches);
+    const priorityB = getBetDisplayPriority(b, matches);
+    if (priorityA.rank !== priorityB.rank) return priorityA.rank - priorityB.rank;
+    return priorityA.time - priorityB.time;
+  }
+
+  function getBetDisplayPriority(bet, matches) {
+    const legMatches = getBetMatches(bet, matches);
+    const now = Date.now();
+    const liveTimes = legMatches
+      .filter((match) => getMatchStatus(match).key === "live")
+      .map(getMatchStartTime)
+      .filter(Number.isFinite);
+    if (liveTimes.length) return { rank: 0, time: Math.min(...liveTimes) };
+
+    const futureTimes = legMatches
+      .map(getMatchStartTime)
+      .filter((time) => Number.isFinite(time) && time >= now);
+    if (futureTimes.length) return { rank: 1, time: Math.min(...futureTimes) };
+
+    const awaitingTimes = legMatches
+      .filter((match) => getMatchStatus(match).key === "awaiting-update")
+      .map(getMatchStartTime)
+      .filter(Number.isFinite);
+    if (awaitingTimes.length) return { rank: 2, time: Math.min(...awaitingTimes) };
+
+    const completedTimes = legMatches.map(getMatchStartTime).filter(Number.isFinite);
+    if (completedTimes.length) {
+      return { rank: 3, time: -Math.max(...completedTimes) };
+    }
+    return { rank: 4, time: Number.MAX_SAFE_INTEGER };
+  }
+
   function getBetLegMatches(bet, matches) {
     const legs = Array.isArray(bet.legs) && bet.legs.length > 0 ? bet.legs : [bet];
     return legs.map((leg) => ({ leg, match: findMatchForBet(matches, leg) }));
   }
 
-  function isRecommendationLegHit(leg, match) {
+  function getRecommendationLegResolution(leg, match) {
     const score = getRegularTimeScore(match);
     const selection = String(leg.selection || "").trim();
-    if (!score || !selection) return false;
+    if (!score || !selection) return { status: "unresolved", label: "待赛果" };
 
     const scorePick = selection.match(/^(\d+)\s*[:：-]\s*(\d+)$/);
     if (scorePick) {
-      return Number(scorePick[1]) === score[0] && Number(scorePick[2]) === score[1];
-    }
-
-    if (selection === "平") return score[0] === score[1];
-
-    if (selection === "平胜") {
-      const halfScore = getHalfTimeScore(match);
-      return (
-        Boolean(halfScore) &&
-        getOutcomeCode(halfScore) === "平" &&
-        getOutcomeCode(score) === "胜"
+      return buildLegResolution(
+        Number(scorePick[1]) === score[0] && Number(scorePick[2]) === score[1],
       );
     }
 
-    if (selection.endsWith("胜")) {
-      if (selection.includes(leg.team1Label || leg.team1)) return score[0] > score[1];
-      if (selection.includes(leg.team2Label || leg.team2)) return score[1] > score[0];
+    const totalGoalsPick = selection.match(/^总进\s*(\d+)\s*球$/);
+    if (totalGoalsPick) {
+      return buildLegResolution(score[0] + score[1] === Number(totalGoalsPick[1]));
     }
 
-    return false;
+    if (leg.requiresHandicap || selection.startsWith("让")) {
+      const handicap = getLegHandicap(leg);
+      if (!Number.isFinite(handicap)) {
+        return { status: "unresolved", label: "待盘口" };
+      }
+      const handicapSelection = selection.replace(/^让球?/, "");
+      return buildLegResolution(getOutcomeCode([score[0] + handicap, score[1]]) === handicapSelection);
+    }
+
+    const otherScoreResolution = getOtherScoreResolution(selection, score);
+    if (otherScoreResolution) return otherScoreResolution;
+
+    if (leg.requiresMarketDefinition) {
+      return { status: "unresolved", label: "待规则" };
+    }
+
+    const halfFullPick = selection.match(/^(胜|平|负)(胜|平|负)$/);
+    if (halfFullPick) {
+      const halfScore = getHalfTimeScore(match);
+      if (!halfScore) return { status: "unresolved", label: "待半场" };
+      return buildLegResolution(
+        Boolean(halfScore) &&
+          getOutcomeCode(halfScore) === halfFullPick[1] &&
+          getOutcomeCode(score) === halfFullPick[2],
+      );
+    }
+
+    if (selection === "胜" || selection === "平" || selection === "负") {
+      return buildLegResolution(getOutcomeCode(score) === selection);
+    }
+
+    if (selection.endsWith("胜")) {
+      if (selection.includes(leg.team1Label || leg.team1)) return buildLegResolution(score[0] > score[1]);
+      if (selection.includes(leg.team2Label || leg.team2)) return buildLegResolution(score[1] > score[0]);
+    }
+
+    if (selection.endsWith("负")) {
+      if (selection.includes(leg.team1Label || leg.team1)) return buildLegResolution(score[0] < score[1]);
+      if (selection.includes(leg.team2Label || leg.team2)) return buildLegResolution(score[1] < score[0]);
+    }
+
+    return { status: "unresolved", label: "待规则" };
+  }
+
+  function buildLegResolution(hit) {
+    return { status: hit ? "hit" : "miss", label: hit ? "命中" : "未命中" };
+  }
+
+  function getLegHandicap(leg) {
+    if (leg.handicap !== undefined && leg.handicap !== null && leg.handicap !== "") {
+      return Number(leg.handicap);
+    }
+    return Number(config.handicapMap?.[leg.team1]);
+  }
+
+  function getOtherScoreResolution(selection, score) {
+    const scoreText = `${score[0]}:${score[1]}`;
+    const listedHomeWins = new Set([
+      "1:0",
+      "2:0",
+      "2:1",
+      "3:0",
+      "3:1",
+      "3:2",
+      "4:0",
+      "4:1",
+      "4:2",
+      "5:0",
+      "5:1",
+      "5:2",
+    ]);
+    const listedDraws = new Set(["0:0", "1:1", "2:2", "3:3"]);
+    const listedAwayWins = new Set([
+      "0:1",
+      "0:2",
+      "1:2",
+      "0:3",
+      "1:3",
+      "2:3",
+      "0:4",
+      "1:4",
+      "2:4",
+      "0:5",
+      "1:5",
+      "2:5",
+    ]);
+
+    if (selection === "胜其它") {
+      return buildLegResolution(score[0] > score[1] && !listedHomeWins.has(scoreText));
+    }
+    if (selection === "平其它") {
+      return buildLegResolution(score[0] === score[1] && !listedDraws.has(scoreText));
+    }
+    if (selection === "负其它") {
+      return buildLegResolution(score[0] < score[1] && !listedAwayWins.has(scoreText));
+    }
+    return null;
   }
 
   function findMatchForBet(matches, bet) {

@@ -704,21 +704,41 @@ h3 {
 }
 
 .tip-grid {
+  --tip-card-height: 204px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-auto-rows: var(--tip-card-height);
   gap: 8px;
+  height: calc(var(--tip-card-height) * 2 + 8px);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 7px;
+  scrollbar-color: var(--gold-deep) rgba(255, 255, 255, 0.06);
+  scrollbar-width: thin;
 }
 
 .tip-card {
+  position: relative;
   display: grid;
-  min-height: 132px;
-  padding: 9px;
+  align-content: start;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 6px;
+  height: var(--tip-card-height);
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background:
     linear-gradient(180deg, rgba(255, 214, 111, 0.08), transparent),
     rgba(6, 12, 31, 0.84);
   box-shadow: var(--shadow-gold);
+}
+
+.tip-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .tip-card.hit {
@@ -733,8 +753,105 @@ h3 {
   border-color: rgba(255, 178, 63, 0.62);
 }
 
+.tip-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.tip-mode,
+.tip-count {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.tip-mode.single {
+  border: 1px solid rgba(69, 184, 255, 0.34);
+  color: #bfe8ff;
+  background: rgba(69, 184, 255, 0.1);
+}
+
+.tip-mode.parlay {
+  border: 1px solid color-mix(in srgb, var(--parlay-color) 68%, white 18%);
+  color: #fff8df;
+  background: color-mix(in srgb, var(--parlay-color) 28%, transparent);
+}
+
+.tip-count {
+  color: var(--gold);
+  background: rgba(255, 214, 111, 0.1);
+}
+
+.parlay-card {
+  border-color: color-mix(in srgb, var(--parlay-color) 74%, var(--line) 26%);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--parlay-color) 18%, transparent), transparent 58%),
+    linear-gradient(90deg, color-mix(in srgb, var(--parlay-color) 18%, transparent), transparent 46%),
+    rgba(6, 12, 31, 0.86);
+}
+
+.parlay-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--parlay-color);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--parlay-color) 70%, transparent);
+  content: "";
+}
+
+.parlay-card::after {
+  position: absolute;
+  top: 30px;
+  right: 9px;
+  left: 13px;
+  border-top: 1px dashed color-mix(in srgb, var(--parlay-color) 58%, transparent);
+  content: "";
+}
+
+.parlay-start {
+  border-top-left-radius: 4px;
+  border-bottom-left-radius: 4px;
+}
+
+.parlay-end {
+  border-top-right-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+.parlay-tone-0 {
+  --parlay-color: #ffb23f;
+}
+
+.parlay-tone-1 {
+  --parlay-color: #42b8ff;
+}
+
+.parlay-tone-2 {
+  --parlay-color: #9b4cff;
+}
+
+.parlay-tone-3 {
+  --parlay-color: #42f28b;
+}
+
+.parlay-tone-4 {
+  --parlay-color: #ff596f;
+}
+
+.parlay-tone-5 {
+  --parlay-color: #ffd66f;
+}
+
 .tip-teams {
-  min-height: 28px;
+  min-height: 0;
   color: #fff4cc;
   font-size: 12px;
   font-weight: 1000;
@@ -742,6 +859,7 @@ h3 {
   flex-wrap: wrap;
   gap: 4px;
   align-items: center;
+  line-height: 1.35;
 }
 
 .tip-teams span {
@@ -755,24 +873,26 @@ h3 {
 }
 
 .tip-leg {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto minmax(0, auto);
   gap: 4px;
   align-items: center;
   min-width: 0;
 }
 
 .tip-leg em {
-  margin-left: auto;
+  grid-column: 1 / -1;
+  margin-left: 0;
   color: var(--gold);
   font-style: normal;
   font-weight: 1000;
+  line-height: 1.35;
 }
 
 dl {
   display: grid;
-  gap: 4px;
-  margin: 4px 0 8px;
+  gap: 3px;
+  margin: 0 0 6px;
 }
 
 dl div {
@@ -800,12 +920,12 @@ dd {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 30px;
+  min-height: 28px;
   margin-top: auto;
   border-radius: 5px;
   background: rgba(255, 255, 255, 0.06);
   color: #fff7d7;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 1000;
 }
 
